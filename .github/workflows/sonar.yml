@@ -1,0 +1,164 @@
+name: Sonar scanner
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PROJECT_NAME: "Sonar"
+
+jobs:
+
+  # ----------------------------------------------------
+  # 1. Resolve Runtime (default = python)
+  # ----------------------------------------------------
+  runtime_resolution:
+    name: Resolve runtime
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.resolve.outputs.runtime }}
+
+    steps:
+      - name: Checkout workflow repo
+        uses: actions/checkout@v4
+
+      - name: Resolve runtime (default = python)
+        id: resolve
+        shell: bash
+        run: |
+          RAW_RUNTIME=$(grep '^runtime' requirements.txt | cut -d '=' -f2 | tr -d '[:space:]')
+          if [ -z "$RAW_RUNTIME" ]; then
+            echo " No runtime provided — default scan"
+            RUNTIME=""
+          else
+            RUNTIME=$(echo "$RAW_RUNTIME" | tr '[:upper:]' '[:lower:]')
+
+            case "$RUNTIME" in
+              node|flutter|python|java|dart|go)
+                echo " Valid runtime: $RUNTIME"
+                ;;
+              *)
+                echo "⚠️ Invalid runtime '$RAW_RUNTIME' — falling back to default scan"
+                RUNTIME=""
+                ;;
+            esac
+          fi
+
+          echo "RUNTIME=$RUNTIME" >> "$GITHUB_ENV"
+
+
+
+  # ----------------------------------------------------
+  # 2. Run Sonar scan
+  # ----------------------------------------------------
+  clone_and_scan:
+    name: Sonar analysis
+    runs-on: ubuntu-latest
+    needs: runtime_resolution
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Read input values
+        shell: bash
+        run: |
+          REPO_URL=$(grep '^repo_url' requirements.txt | cut -d '=' -f2 | tr -d '[:space:]')
+          REPO_NAME=$(grep '^repo_name' requirements.txt | cut -d '=' -f2 | tr -d '[:space:]')
+          BRANCH_NAME=$(grep '^branch_name' requirements.txt | cut -d '=' -f2 | tr -d '[:space:]')
+          SOURCE_DIRECTORY=$(grep '^source_directory' requirements.txt | cut -d '=' -f2 | tr -d '[:space:]')
+
+          echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
+          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "SOURCE_DIRECTORY=$SOURCE_DIRECTORY" >> $GITHUB_ENV
+
+      - name: Set resolved runtime
+        run: |
+          echo "RUNTIME=${{ needs.runtime_resolution.outputs.runtime }}" >> $GITHUB_ENV
+
+      # ----------------------------------------------------
+      # Java Scan
+      # ----------------------------------------------------
+      - name: Java + Maven Scan
+        if: env.RUNTIME == 'java'
+        run: |
+          mvn clean verify -DskipTests=true
+          mvn org.sonarsource.scanner.maven:sonar-maven-plugin:4.0.0.4121:sonar \
+            -Dsonar.projectKey=Elangovan-swaas_Sonar \
+            -Dsonar.organization=elangovan-swaas \
+            -Dsonar.projectName=${{ env.PROJECT_NAME }} \
+            -Dsonar.inclusions=**/*.java \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+
+      # ----------------------------------------------------
+      # Node / React Scan
+      # ----------------------------------------------------
+      - name: Node / React Scan
+        if: env.RUNTIME == 'node'
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.organization=elangovan-swaas
+            -Dsonar.projectKey=Elangovan-swaas_Sonar
+            -Dsonar.projectName=${{ env.PROJECT_NAME }}
+            -Dsonar.sources=.
+            -Dsonar.inclusions=**/*.js,**/*.jsx,**/*.ts,**/*.tsx
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # ----------------------------------------------------
+      # Python Scan
+      # ----------------------------------------------------
+      - name: Python Scan
+        if: env.RUNTIME == 'python'
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.organization=elangovan-swaas
+            -Dsonar.projectKey=Elangovan-swaas_Sonar
+            -Dsonar.projectName=${{ env.PROJECT_NAME }}
+            -Dsonar.sources=.
+            -Dsonar.inclusions=**/*.py
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # ----------------------------------------------------
+      # Flutter Scan
+      # ----------------------------------------------------
+      - name: Flutter Scan
+        if: env.RUNTIME == 'flutter'
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.organization=elangovan-swaas
+            -Dsonar.projectKey=Elangovan-swaas_Sonar
+            -Dsonar.projectName=${{ env.PROJECT_NAME }}
+            -Dsonar.sources=.
+            -Dsonar.inclusions=**/*.dart
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+
+      - name: SonarQube Scan
+        if: env.RUNTIME == ''
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.organization=elangovan-swaas
+            -Dsonar.projectKey=Elangovan-swaas_Sonar
+            -Dsonar.projectName=${{ env.PROJECT_NAME }}
+            -Dsonar.sources=.
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

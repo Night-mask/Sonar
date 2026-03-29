@@ -1,0 +1,14 @@
+
+repo_url = https://github.com/Elangovan-swaas/Sonar.git
+
+# repository name
+repo_name = Sonar
+
+# actual branch name for which the sonar scan should run #.
+branch_name = main
+
+# application source code directory to scan
+source_directory = 
+
+# application runtime environment example 'node','python','java'
+runtime = FLUtter
